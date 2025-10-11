@@ -3,7 +3,7 @@ export default function LeftMenu() {
       { label: 'HOME', href: '/' },
       { label: 'TRAIN', href: '/train' },
       { label: 'COMPANIES', href: '/companies' },
-      { label: 'ABOUT US', href: '/about' },
+      { label: 'ACCOUNT', href: '/account' },
     ];
   
     return (
