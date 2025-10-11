@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import LeftMenu from '../components/LeftMenu';
+import CustomConnectButton from '../components/CustomConnectButton';
 
 export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
@@ -64,6 +65,11 @@ export default function Home() {
       
       <div className="min-h-screen bg-white text-black scroll-smooth">
       <LeftMenu />
+      
+      {/* Connect Button */}
+      <div className="fixed top-6 right-6 z-50">
+        <CustomConnectButton />
+      </div>
       
       {/* White overlay to hide Spline watermark */}
       <div className="absolute bottom-4 right-4 w-40 h-12 bg-white z-40 rounded-md"></div>
