@@ -4,6 +4,7 @@ import Spline from '@splinetool/react-spline';
 
 export default function TrainPage() {
   const [isMobile, setIsMobile] = useState(false);
+  const [isMeetingCardOpen, setIsMeetingCardOpen] = useState(false);
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -47,6 +48,29 @@ export default function TrainPage() {
       </Head>
       
       <div className="min-h-screen bg-gray-900">
+        {/* Back Button */}
+        <button
+          onClick={() => window.history.back()}
+          className="fixed top-6 left-6 z-50 px-4 py-2 bg-white/10 backdrop-blur-sm text-white rounded-lg hover:bg-white/20 transition-colors duration-200"
+        >
+          ← Back
+        </button>
+
+        {/* Meeting Card Toggle Button */}
+        <button
+          onClick={() => setIsMeetingCardOpen(!isMeetingCardOpen)}
+          className="fixed bottom-6 left-6 z-50 w-12 h-12 bg-white/10 backdrop-blur-sm text-white rounded-lg hover:bg-white/20 transition-colors duration-200 flex items-center justify-center"
+        >
+          <div className="w-6 h-6 bg-white/60 rounded"></div>
+        </button>
+
+        {/* Meeting Card */}
+        {isMeetingCardOpen && (
+          <div className="fixed bottom-20 left-6 z-50 w-80 h-48 bg-white rounded-lg shadow-2xl">
+            {/* Blank white card - no content */}
+          </div>
+        )}
+
         {/* Full screen Spline 3D Hand */}
         <div className="w-full h-screen">
           <Spline
