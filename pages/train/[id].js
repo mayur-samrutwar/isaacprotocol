@@ -21,6 +21,25 @@ export default function TrainCardPage() {
   const animationFrameRef = useRef(null);
   const lastVideoTsRef = useRef(0);
   const [isPoseTrackingReady, setIsPoseTrackingReady] = useState(false);
+  
+  // Robot control state
+  const [robotState, setRobotState] = useState({
+    rotation: 0,      // -1 (left), 0 (center), 1 (right)
+    shoulder: 0,      // -1 (down), 0 (center), 1 (up)
+    elbow: 0          // 0 (down), 1 (up) - toggle state
+  });
+  
+  // Gesture tracking refs
+  const lastHandPositionsRef = useRef({ left: null, right: null });
+  const gestureThresholdsRef = useRef({
+    rotationThreshold: 20,    // pixels - reduced for easier detection
+    verticalThreshold: 15,     // pixels - reduced for easier detection
+    smoothingFactor: 0.3      // 0-1, lower = more responsive
+  });
+  
+  // Debug and debouncing
+  const lastElbowToggleRef = useRef(0);
+  const debugInfoRef = useRef({});
 
   // Task data based on ID
   const taskData = {
@@ -216,6 +235,192 @@ export default function TrainCardPage() {
     });
   };
 
+  // Simulate keyboard events for robot control
+  const simulateKeyDown = (keyCode) => {
+    const event = new KeyboardEvent('keydown', {
+      key: keyCode,
+      code: keyCode,
+      keyCode: keyCode,
+      which: keyCode,
+      bubbles: true,
+      cancelable: true
+    });
+    document.dispatchEvent(event);
+  };
+
+  const simulateKeyUp = (keyCode) => {
+    const event = new KeyboardEvent('keyup', {
+      key: keyCode,
+      code: keyCode,
+      keyCode: keyCode,
+      which: keyCode,
+      bubbles: true,
+      cancelable: true
+    });
+    document.dispatchEvent(event);
+  };
+
+  // Robot control functions
+  const controlRobot = (gesture) => {
+    setRobotState(prev => {
+      const newState = { ...prev };
+      
+      // Rotation control (left/right arrow equivalent)
+      if (gesture.rotation !== undefined && gesture.rotation !== prev.rotation) {
+        // Release previous rotation key
+        if (prev.rotation === 1) {
+          simulateKeyUp('ArrowRight');
+        } else if (prev.rotation === -1) {
+          simulateKeyUp('ArrowLeft');
+        }
+        
+        newState.rotation = gesture.rotation;
+        
+        // Press new rotation key
+        if (gesture.rotation === 1) {
+          simulateKeyDown('ArrowRight'); // Right rotation
+        } else if (gesture.rotation === -1) {
+          simulateKeyDown('ArrowLeft'); // Left rotation
+        }
+      }
+      
+      // Shoulder control (shift/enter equivalent)
+      if (gesture.shoulder !== undefined && gesture.shoulder !== prev.shoulder) {
+        // Release previous shoulder key
+        if (prev.shoulder === 1) {
+          simulateKeyUp('Shift');
+        } else if (prev.shoulder === -1) {
+          simulateKeyUp('Enter');
+        }
+        
+        newState.shoulder = gesture.shoulder;
+        
+        // Press new shoulder key
+        if (gesture.shoulder === 1) {
+          simulateKeyDown('Shift'); // Shoulder up
+        } else if (gesture.shoulder === -1) {
+          simulateKeyDown('Enter'); // Shoulder down
+        }
+      }
+      
+      // Elbow toggle (up arrow equivalent) - single press
+      if (gesture.elbowToggle) {
+        newState.elbow = newState.elbow === 0 ? 1 : 0;
+        simulateKeyDown('ArrowUp'); // Elbow toggle
+        // Immediately release for toggle behavior
+        setTimeout(() => simulateKeyUp('ArrowUp'), 50);
+      }
+      
+      return newState;
+    });
+  };
+
+  // Analyze hand gestures and map to robot controls
+  const analyzeGestures = (poses, handLandmarks) => {
+    if (!poses || poses.length === 0) return;
+    
+    const pose = poses[0];
+    const keypoints = pose.keypoints;
+    
+    // Get wrist positions
+    const leftWrist = keypoints.find(kp => kp.name === 'left_wrist');
+    const rightWrist = keypoints.find(kp => kp.name === 'right_wrist');
+    
+    if (!leftWrist || !rightWrist || leftWrist.score < 0.3 || rightWrist.score < 0.3) {
+      return;
+    }
+    
+    const currentPositions = {
+      left: { x: leftWrist.x, y: leftWrist.y },
+      right: { x: rightWrist.x, y: rightWrist.y }
+    };
+    
+    const lastPositions = lastHandPositionsRef.current;
+    const thresholds = gestureThresholdsRef.current;
+    
+    // Initialize last positions if not set
+    if (!lastPositions.left || !lastPositions.right) {
+      lastHandPositionsRef.current = currentPositions;
+      return;
+    }
+    
+    // Calculate movement deltas
+    const leftDeltaX = currentPositions.left.x - lastPositions.left.x;
+    const leftDeltaY = currentPositions.left.y - lastPositions.left.y;
+    const rightDeltaX = currentPositions.right.x - lastPositions.right.x;
+    const rightDeltaY = currentPositions.right.y - lastPositions.right.y;
+    
+    // Gesture detection logic
+    const gesture = {};
+    
+    // 1. ROTATION CONTROL (Left/Right Arrow)
+    // Use dominant hand (right hand) for rotation
+    if (Math.abs(rightDeltaX) > thresholds.rotationThreshold) {
+      if (rightDeltaX > 0) {
+        gesture.rotation = 1; // Right rotation
+      } else {
+        gesture.rotation = -1; // Left rotation
+      }
+    } else {
+      gesture.rotation = 0; // Center
+    }
+    
+    // 2. SHOULDER CONTROL (Shift/Enter)
+    // Use left hand vertical movement for shoulder
+    if (Math.abs(leftDeltaY) > thresholds.verticalThreshold) {
+      if (leftDeltaY < 0) {
+        gesture.shoulder = 1; // Shoulder up (shift)
+      } else {
+        gesture.shoulder = -1; // Shoulder down (enter)
+      }
+    } else {
+      gesture.shoulder = 0; // Center
+    }
+    
+    // 3. ELBOW TOGGLE (Up Arrow) - with debouncing
+    // Use right hand vertical movement for elbow toggle
+    const now = Date.now();
+    if (Math.abs(rightDeltaY) > thresholds.verticalThreshold && 
+        now - lastElbowToggleRef.current > 1000) { // 1 second debounce
+      // Toggle on both up AND down movement
+      gesture.elbowToggle = true;
+      lastElbowToggleRef.current = now;
+    }
+    
+    // Apply smoothing
+    const smoothedGesture = {
+      rotation: gesture.rotation !== undefined ? 
+        Math.round(gesture.rotation * thresholds.smoothingFactor + 
+                  robotState.rotation * (1 - thresholds.smoothingFactor)) : 
+        robotState.rotation,
+      shoulder: gesture.shoulder !== undefined ? 
+        Math.round(gesture.shoulder * thresholds.smoothingFactor + 
+                  robotState.shoulder * (1 - thresholds.smoothingFactor)) : 
+        robotState.shoulder,
+      elbowToggle: gesture.elbowToggle
+    };
+    
+    // Debug info
+    // debugInfoRef.current = {
+    //   leftDeltaX: leftDeltaX.toFixed(1),
+    //   leftDeltaY: leftDeltaY.toFixed(1),
+    //   rightDeltaX: rightDeltaX.toFixed(1),
+    //   rightDeltaY: rightDeltaY.toFixed(1),
+    //   gesture: gesture,
+    //   smoothed: smoothedGesture
+    // };
+    
+    // Control robot if gesture detected
+    if (smoothedGesture.rotation !== robotState.rotation || 
+        smoothedGesture.shoulder !== robotState.shoulder || 
+        smoothedGesture.elbowToggle) {
+      controlRobot(smoothedGesture);
+    }
+    
+    // Update last positions
+    lastHandPositionsRef.current = currentPositions;
+  };
+
   // Detect poses and hands
   const detectPoses = async () => {
     if (!poseDetectorRef.current || !videoRef.current || !canvasRef.current) return;
@@ -226,10 +431,7 @@ export default function TrainCardPage() {
       const ctx = canvasRef.current.getContext('2d');
       ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
       
-      // Draw arms (shoulders to wrists)
-      if (poses && poses.length > 0) {
-        drawArms(ctx, poses);
-      }
+      let handLandmarks = null;
       
       // Draw detailed hand landmarks
       if (handLandmarkerRef.current) {
@@ -238,8 +440,17 @@ export default function TrainCardPage() {
         const handResult = handLandmarkerRef.current.detectForVideo(videoRef.current, now);
         
         if (handResult && handResult.landmarks && handResult.landmarks.length > 0) {
-          drawHands(ctx, handResult.landmarks);
+          handLandmarks = handResult.landmarks;
+          drawHands(ctx, handLandmarks);
         }
+      }
+      
+      // Draw arms (shoulders to wrists)
+      if (poses && poses.length > 0) {
+        drawArms(ctx, poses);
+        
+        // Analyze gestures for robot control
+        analyzeGestures(poses, handLandmarks);
       }
     } catch (err) {
       console.error('Pose detection error:', err);
@@ -318,6 +529,32 @@ export default function TrainCardPage() {
               </div>
             )}
             
+            {/* Robot Control Status */}
+            {/* <div className="absolute top-4 left-4 bg-black/80 text-white p-3 rounded-lg text-sm font-mono">
+              <div className="space-y-1">
+                <div>Rotation: {robotState.rotation === -1 ? 'LEFT ←' : robotState.rotation === 1 ? 'RIGHT →' : 'CENTER'}</div>
+                <div>Shoulder: {robotState.shoulder === -1 ? 'DOWN ↓' : robotState.shoulder === 1 ? 'UP ↑' : 'CENTER'}</div>
+                <div>Elbow: {robotState.elbow === 1 ? 'UP ↑' : 'DOWN ↓'}</div>
+                <div className="text-xs text-gray-300 mt-2">
+                  Gesture → Keyboard Events
+                </div>
+              </div>
+            </div> */}
+
+            {/* Debug Info */}
+            {/* <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-xs font-mono">
+              <div className="space-y-1">
+                <div>Left ΔX: {debugInfoRef.current.leftDeltaX || '0.0'}</div>
+                <div>Left ΔY: {debugInfoRef.current.leftDeltaY || '0.0'}</div>
+                <div>Right ΔX: {debugInfoRef.current.rightDeltaX || '0.0'}</div>
+                <div>Right ΔY: {debugInfoRef.current.rightDeltaY || '0.0'}</div>
+                <div className="text-gray-300 mt-2">
+                  Raw Gesture: {JSON.stringify(debugInfoRef.current.gesture || {})}
+                </div>
+              </div>
+            </div> */}
+
+
             {/* Minimize/Close button - only show when expanded */}
             {isCardExpanded && (
               <button
@@ -334,6 +571,50 @@ export default function TrainCardPage() {
             )}
           </div>
         </div>
+
+        {/* Test Buttons - Outside Card */}
+        {/* <div className="fixed bottom-4 left-4 bg-black/80 text-white p-4 rounded-lg z-40">
+          <div className="text-xs font-mono mb-3">Test Keyboard Events:</div>
+          <div className="grid grid-cols-2 gap-2">
+            <button 
+              onMouseDown={() => simulateKeyDown('ArrowLeft')}
+              onMouseUp={() => simulateKeyUp('ArrowLeft')}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-xs font-mono"
+            >
+              ← Left
+            </button>
+            <button 
+              onMouseDown={() => simulateKeyDown('ArrowRight')}
+              onMouseUp={() => simulateKeyUp('ArrowRight')}
+              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-xs font-mono"
+            >
+              Right →
+            </button>
+            <button 
+              onMouseDown={() => simulateKeyDown('Shift')}
+              onMouseUp={() => simulateKeyUp('Shift')}
+              className="px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-xs font-mono"
+            >
+              ↑ Shift
+            </button>
+            <button 
+              onMouseDown={() => simulateKeyDown('Enter')}
+              onMouseUp={() => simulateKeyUp('Enter')}
+              className="px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-xs font-mono"
+            >
+              ↓ Enter
+            </button>
+            <button 
+              onClick={() => {
+                simulateKeyDown('ArrowUp');
+                setTimeout(() => simulateKeyUp('ArrowUp'), 50);
+              }}
+              className="px-3 py-2 bg-purple-600 hover:bg-purple-700 rounded text-xs font-mono col-span-2"
+            >
+              ↑↑ Elbow Toggle
+            </button>
+          </div>
+        </div> */}
       </div>
     </>
   );
