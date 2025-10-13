@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import TaskCard from '@/components/TaskCard';
 import Navbar from '@/components/Navbar';
 
 export default function TrainPage() {
   const [isMobile, setIsMobile] = useState(false);
+  const router = useRouter();
   const tasks = [
     { id: 't1', title: 'Move', company: 'Atlas Dynamics', pay: '$12/task' },
     { id: 't2', title: 'Press Button', company: 'Prime Motion', pay: '$8/task' },
@@ -40,7 +42,7 @@ export default function TrainPage() {
                   title={task.title}
                   company={task.company}
                   pay={task.pay}
-                  onClick={() => {}}
+                  onClick={() => router.push(`/train/${task.id}`)}
                 />
               ))}
             </div>
