@@ -32,7 +32,7 @@ export default function TrainPage() {
         <Navbar />
         <div className="h-16"></div>
         <section className="px-6 py-12">
-          <div className="max-w-6xl mx-auto">
+          <div className="max-w-5xl mx-auto pl-12">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
               {tasks.map((task) => (
                 <TaskCard
