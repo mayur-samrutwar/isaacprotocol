@@ -50,10 +50,10 @@ export default function CompaniesPage() {
         <Navbar />
         <div className="h-16"></div>
         
-        <section className="px-6 py-20">
+        <section className="px-6 py-12">
           <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-20">
-              <h1 className="text-5xl font-semibold tracking-tight text-black/90 mb-6">
+            <div className="mb-8">
+              <h1 className="text-4xl font-semibold tracking-tight text-black/90 mb-2">
                 Companies
               </h1>
               <p className="text-lg text-black/60 mb-8">

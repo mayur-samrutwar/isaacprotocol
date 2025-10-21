@@ -10,8 +10,9 @@ import * as poseDetection from '@tensorflow-models/pose-detection';
 export default function TrainCardPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { isConnected } = useAccount();
+  const { isConnected, isConnecting } = useAccount();
   const [isCardExpanded, setIsCardExpanded] = useState(true);
+  const [isWalletLoading, setIsWalletLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   
   // Pose tracking refs
@@ -461,12 +462,43 @@ export default function TrainCardPage() {
     animationFrameRef.current = requestAnimationFrame(detectPoses);
   };
 
-  // Redirect to home if wallet is not connected
+  // Handle wallet connection state
   useEffect(() => {
-    if (!isConnected) {
-      router.push('/');
-    }
-  }, [isConnected, router]);
+    console.log('Train task page - isConnected:', isConnected, 'isConnecting:', isConnecting);
+    
+    // Add a small delay to ensure wallet state is properly loaded
+    const timer = setTimeout(() => {
+      setIsWalletLoading(false);
+      if (!isConnected) {
+        console.log('Redirecting to home - wallet not connected');
+        router.push('/');
+      }
+    }, 1000); // 1 second delay
+
+    return () => clearTimeout(timer);
+  }, [isConnected, isConnecting, router]);
+
+  // Show loading state while checking wallet connection
+  if (isWalletLoading) {
+    return (
+      <>
+        <Head>
+          <title>{currentTask.title} - Train</title>
+          <meta name="description" content={`Train ${currentTask.title} task`} />
+        </Head>
+        
+        <div className="min-h-screen bg-black flex items-center justify-center">
+          <div className="text-center text-white">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-gray-600 rounded-full"></div>
+              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-white rounded-full animate-spin"></div>
+            </div>
+            <p className="mt-4 text-white/60">Checking wallet connection...</p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   // Start camera on mount
   useEffect(() => {

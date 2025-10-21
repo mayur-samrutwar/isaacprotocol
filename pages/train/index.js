@@ -7,8 +7,9 @@ import Navbar from '@/components/Navbar';
 
 export default function TrainPage() {
   const [isMobile, setIsMobile] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { isConnected, isConnecting } = useAccount();
   const tasks = [
     { id: 't1', title: 'Move', company: 'Atlas Dynamics', pay: '$12/task' },
     { id: 't2', title: 'Press Button', company: 'Prime Motion', pay: '$8/task' },
@@ -26,12 +27,43 @@ export default function TrainPage() {
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // Redirect to home if wallet is not connected
+  // Handle wallet connection state
   useEffect(() => {
-    if (!isConnected) {
-      router.push('/');
-    }
-  }, [isConnected, router]);
+    console.log('Train page - isConnected:', isConnected, 'isConnecting:', isConnecting);
+    
+    // Add a small delay to ensure wallet state is properly loaded
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+      if (!isConnected) {
+        console.log('Redirecting to home - wallet not connected');
+        router.push('/');
+      }
+    }, 1000); // 1 second delay
+
+    return () => clearTimeout(timer);
+  }, [isConnected, isConnecting, router]);
+
+  // Show loading state while checking connection
+  if (isLoading) {
+    return (
+      <>
+        <Head>
+          <title>Train - ISAAC Protocol</title>
+          <meta name="description" content="Train high‑fidelity motion models by contributing precise human movement data." />
+        </Head>
+        
+        <div className="min-h-screen bg-white flex items-center justify-center">
+          <div className="text-center">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-gray-200 rounded-full"></div>
+              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-black rounded-full animate-spin"></div>
+            </div>
+            <p className="mt-4 text-black/60">Checking wallet connection...</p>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
