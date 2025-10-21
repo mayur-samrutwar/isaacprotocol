@@ -11,9 +11,9 @@ export default function TrainPage() {
   const router = useRouter();
   const { isConnected, isConnecting } = useAccount();
   const tasks = [
-    { id: 't1', title: 'Move', company: 'Atlas Dynamics', pay: '$12/task' },
-    { id: 't2', title: 'Press Button', company: 'Prime Motion', pay: '$8/task' },
-    { id: 't3', title: 'Open Door', company: 'Keystone Labs', pay: '$10/task' }
+    { id: 't1', title: 'Move Object', company: 'Atlas Dynamics', pay: '$12/task', deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) }, // 3 days from now
+    { id: 't2', title: 'Move Object', company: 'Atlas Dynamics', pay: '$12/task', deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) }, // 3 days from now
+    { id: 't3', title: 'Move Object', company: 'Atlas Dynamics', pay: '$12/task', deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) }  // 3 days from now
   ];
 
   useEffect(() => {
@@ -83,6 +83,7 @@ export default function TrainPage() {
                   title={task.title}
                   company={task.company}
                   pay={task.pay}
+                  deadline={task.deadline}
                   onClick={() => router.push(`/train/${task.id}`)}
                 />
               ))}
