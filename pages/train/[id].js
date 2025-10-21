@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { useAccount } from 'wagmi';
 import Spline from '@splinetool/react-spline';
 import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgl';
@@ -9,6 +10,7 @@ import * as poseDetection from '@tensorflow-models/pose-detection';
 export default function TrainCardPage() {
   const router = useRouter();
   const { id } = router.query;
+  const { isConnected } = useAccount();
   const [isCardExpanded, setIsCardExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -458,6 +460,13 @@ export default function TrainCardPage() {
 
     animationFrameRef.current = requestAnimationFrame(detectPoses);
   };
+
+  // Redirect to home if wallet is not connected
+  useEffect(() => {
+    if (!isConnected) {
+      router.push('/');
+    }
+  }, [isConnected, router]);
 
   // Start camera on mount
   useEffect(() => {

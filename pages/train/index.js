@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
+import { useAccount } from 'wagmi';
 import TaskCard from '@/components/TaskCard';
 import Navbar from '@/components/Navbar';
 
 export default function TrainPage() {
   const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
+  const { isConnected } = useAccount();
   const tasks = [
     { id: 't1', title: 'Move', company: 'Atlas Dynamics', pay: '$12/task' },
     { id: 't2', title: 'Press Button', company: 'Prime Motion', pay: '$8/task' },
@@ -23,6 +25,13 @@ export default function TrainPage() {
     
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Redirect to home if wallet is not connected
+  useEffect(() => {
+    if (!isConnected) {
+      router.push('/');
+    }
+  }, [isConnected, router]);
 
   return (
     <>
