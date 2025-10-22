@@ -478,6 +478,26 @@ export default function TrainCardPage() {
     return () => clearTimeout(timer);
   }, [isConnected, isConnecting, router]);
 
+  // Start camera on mount
+  useEffect(() => {
+    if (!isWalletLoading) {
+      startCamera();
+    }
+  }, [isWalletLoading]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (videoRef.current && videoRef.current.srcObject) {
+        const tracks = videoRef.current.srcObject.getTracks();
+        tracks.forEach(track => track.stop());
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
+
   // Show loading state while checking wallet connection
   if (isWalletLoading) {
     return (
@@ -499,24 +519,6 @@ export default function TrainCardPage() {
       </>
     );
   }
-
-  // Start camera on mount
-  useEffect(() => {
-    startCamera();
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = videoRef.current.srcObject.getTracks();
-        tracks.forEach(track => track.stop());
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, []);
 
   return (
     <>
