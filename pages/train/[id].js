@@ -35,14 +35,31 @@ export default function TrainCardPage() {
   // Gesture tracking refs
   const lastHandPositionsRef = useRef({ left: null, right: null });
   const gestureThresholdsRef = useRef({
-    rotationThreshold: 20,    // pixels - reduced for easier detection
-    verticalThreshold: 15,     // pixels - reduced for easier detection
-    smoothingFactor: 0.3      // 0-1, lower = more responsive
+    // State detection thresholds - IMPROVED SENSITIVITY
+    stateChangeThreshold: 0.1,      // Smaller threshold for more sensitive detection
+    towardsScreenThreshold: 0.08,   // More sensitive towards screen detection
+    awayFromScreenThreshold: 0.12,  // More sensitive away from screen detection
+    
+    // Simple vertical control
+    verticalThreshold: 50,          // pixels for up/down movement
+    
+    // Rotation increments - INCREASED FOR MORE MOVEMENT
+    rotationIncrement: 30,          // degrees per gesture (doubled from 15)
   });
   
   // Debug and debouncing
   const lastElbowToggleRef = useRef(0);
   const debugInfoRef = useRef({});
+  
+  // State tracking for rotation detection
+  const rotationStateRef = useRef({
+    currentState: 'normal', // 'normal', 'towards_screen', 'away_from_screen'
+    lastState: 'normal',
+    stateChangeTime: 0,
+    baselineDistance: null, // Store normal position distance
+    clockwiseRotations: 0, // Track how many clockwise rotations we've done
+    lastRotationTime: 0
+  });
 
   // Task data based on ID
   const taskData = {
@@ -263,12 +280,12 @@ export default function TrainCardPage() {
     document.dispatchEvent(event);
   };
 
-  // Robot control functions
+  // Robot control functions - Simplified for 3D orientation
   const controlRobot = (gesture) => {
     setRobotState(prev => {
       const newState = { ...prev };
       
-      // Rotation control (left/right arrow equivalent)
+      // Rotation control (left/right arrow equivalent) - Fixed increments
       if (gesture.rotation !== undefined && gesture.rotation !== prev.rotation) {
         // Release previous rotation key
         if (prev.rotation === 1) {
@@ -279,30 +296,13 @@ export default function TrainCardPage() {
         
         newState.rotation = gesture.rotation;
         
-        // Press new rotation key
+        // Press new rotation key for fixed duration
         if (gesture.rotation === 1) {
-          simulateKeyDown('ArrowRight'); // Right rotation
+          simulateKeyDown('ArrowRight'); // Clockwise rotation
+          setTimeout(() => simulateKeyUp('ArrowRight'), 200); // Hold for 200ms
         } else if (gesture.rotation === -1) {
-          simulateKeyDown('ArrowLeft'); // Left rotation
-        }
-      }
-      
-      // Shoulder control (shift/enter equivalent)
-      if (gesture.shoulder !== undefined && gesture.shoulder !== prev.shoulder) {
-        // Release previous shoulder key
-        if (prev.shoulder === 1) {
-          simulateKeyUp('Shift');
-        } else if (prev.shoulder === -1) {
-          simulateKeyUp('Enter');
-        }
-        
-        newState.shoulder = gesture.shoulder;
-        
-        // Press new shoulder key
-        if (gesture.shoulder === 1) {
-          simulateKeyDown('Shift'); // Shoulder up
-        } else if (gesture.shoulder === -1) {
-          simulateKeyDown('Enter'); // Shoulder down
+          simulateKeyDown('ArrowLeft'); // Anticlockwise rotation
+          setTimeout(() => simulateKeyUp('ArrowLeft'), 200); // Hold for 200ms
         }
       }
       
@@ -318,110 +318,145 @@ export default function TrainCardPage() {
     });
   };
 
-  // Analyze hand gestures and map to robot controls
+  // Analyze gestures from pose data - Focus on 3D arm orientation
   const analyzeGestures = (poses, handLandmarks) => {
     if (!poses || poses.length === 0) return;
     
     const pose = poses[0];
     const keypoints = pose.keypoints;
     
-    // Get wrist positions
-    const leftWrist = keypoints.find(kp => kp.name === 'left_wrist');
+    // Get key points for RIGHT ARM ONLY
     const rightWrist = keypoints.find(kp => kp.name === 'right_wrist');
+    const rightElbow = keypoints.find(kp => kp.name === 'right_elbow');
+    const rightShoulder = keypoints.find(kp => kp.name === 'right_shoulder');
     
-    if (!leftWrist || !rightWrist || leftWrist.score < 0.3 || rightWrist.score < 0.3) {
+    if (!rightWrist || !rightElbow || !rightShoulder || 
+        rightWrist.score < 0.3 || rightElbow.score < 0.3) {
       return;
     }
     
-    const currentPositions = {
-      left: { x: leftWrist.x, y: leftWrist.y },
-      right: { x: rightWrist.x, y: rightWrist.y }
-    };
-    
-    const lastPositions = lastHandPositionsRef.current;
     const thresholds = gestureThresholdsRef.current;
     
-    // Initialize last positions if not set
-    if (!lastPositions.left || !lastPositions.right) {
-      lastHandPositionsRef.current = currentPositions;
+    // Calculate movement deltas for vertical control
+    const currentRightPos = { x: rightWrist.x, y: rightWrist.y };
+    const lastRightPos = lastHandPositionsRef.current.right;
+    
+    if (!lastRightPos) {
+      lastHandPositionsRef.current.right = currentRightPos;
       return;
     }
     
-    // Calculate movement deltas
-    const leftDeltaX = currentPositions.left.x - lastPositions.left.x;
-    const leftDeltaY = currentPositions.left.y - lastPositions.left.y;
-    const rightDeltaX = currentPositions.right.x - lastPositions.right.x;
-    const rightDeltaY = currentPositions.right.y - lastPositions.right.y;
+    const rightDeltaY = currentRightPos.y - lastRightPos.y;
     
-    // Gesture detection logic
-    const gesture = {};
+    // Calculate 3D arm orientation using elbow-wrist line length
+    const elbowWristDistance = Math.sqrt(
+      Math.pow(rightWrist.x - rightElbow.x, 2) + 
+      Math.pow(rightWrist.y - rightElbow.y, 2)
+    );
     
-    // 1. ROTATION CONTROL (Left/Right Arrow)
-    // Use dominant hand (right hand) for rotation
-    if (Math.abs(rightDeltaX) > thresholds.rotationThreshold) {
-      if (rightDeltaX > 0) {
-        gesture.rotation = 1; // Right rotation
-      } else {
-        gesture.rotation = -1; // Left rotation
-      }
-    } else {
-      gesture.rotation = 0; // Center
-    }
+    // Normalize distance (0-1 scale based on typical arm length)
+    const normalizedDistance = Math.min(elbowWristDistance / 150, 1.0);
     
-    // 2. SHOULDER CONTROL (Shift/Enter)
-    // Use left hand vertical movement for shoulder
-    if (Math.abs(leftDeltaY) > thresholds.verticalThreshold) {
-      if (leftDeltaY < 0) {
-        gesture.shoulder = 1; // Shoulder up (shift)
-      } else {
-        gesture.shoulder = -1; // Shoulder down (enter)
-      }
-    } else {
-      gesture.shoulder = 0; // Center
-    }
-    
-    // 3. ELBOW TOGGLE (Up Arrow) - with debouncing
-    // Use right hand vertical movement for elbow toggle
-    const now = Date.now();
-    if (Math.abs(rightDeltaY) > thresholds.verticalThreshold && 
-        now - lastElbowToggleRef.current > 1000) { // 1 second debounce
-      // Toggle on both up AND down movement
-      gesture.elbowToggle = true;
-      lastElbowToggleRef.current = now;
-    }
-    
-    // Apply smoothing
-    const smoothedGesture = {
-      rotation: gesture.rotation !== undefined ? 
-        Math.round(gesture.rotation * thresholds.smoothingFactor + 
-                  robotState.rotation * (1 - thresholds.smoothingFactor)) : 
-        robotState.rotation,
-      shoulder: gesture.shoulder !== undefined ? 
-        Math.round(gesture.shoulder * thresholds.smoothingFactor + 
-                  robotState.shoulder * (1 - thresholds.smoothingFactor)) : 
-        robotState.shoulder,
-      elbowToggle: gesture.elbowToggle
+    // Store debug info
+    debugInfoRef.current = {
+      elbowWristDistance: elbowWristDistance.toFixed(1),
+      normalizedDistance: normalizedDistance.toFixed(2),
+      rightDeltaY: rightDeltaY.toFixed(1),
+      gesture: {},
+      rawWrist: { x: rightWrist.x.toFixed(1), y: rightWrist.y.toFixed(1) },
+      rawElbow: { x: rightElbow.x.toFixed(1), y: rightElbow.y.toFixed(1) }
     };
     
-    // Debug info
-    // debugInfoRef.current = {
-    //   leftDeltaX: leftDeltaX.toFixed(1),
-    //   leftDeltaY: leftDeltaY.toFixed(1),
-    //   rightDeltaX: rightDeltaX.toFixed(1),
-    //   rightDeltaY: rightDeltaY.toFixed(1),
-    //   gesture: gesture,
-    //   smoothed: smoothedGesture
-    // };
+    const gesture = {};
+    
+    // 1. STATE-BASED ROTATION CONTROL
+    console.log(`Distance: ${elbowWristDistance.toFixed(1)}px, Normalized: ${normalizedDistance.toFixed(2)}`);
+    
+    const state = rotationStateRef.current;
+    const now = Date.now();
+    
+    // Initialize baseline distance (normal position)
+    if (state.baselineDistance === null) {
+      state.baselineDistance = normalizedDistance;
+      console.log(`📍 Baseline distance set: ${state.baselineDistance.toFixed(2)}`);
+    }
+    
+    // Determine current state based on distance relative to baseline - IMPROVED SENSITIVITY
+    let currentState = 'normal';
+    const distanceDiff = normalizedDistance - state.baselineDistance;
+    
+    if (distanceDiff < -thresholds.towardsScreenThreshold) { // Towards screen (shorter)
+      currentState = 'towards_screen';
+    } else if (distanceDiff > thresholds.awayFromScreenThreshold) { // Away from screen (longer)
+      currentState = 'away_from_screen';
+    }
+    
+    // Detect state changes
+    if (currentState !== state.currentState) {
+      console.log(`🔄 State change: ${state.currentState} → ${currentState}`);
+      state.lastState = state.currentState;
+      state.currentState = currentState;
+      state.stateChangeTime = now;
+    }
+    
+    // Generate rotation commands based on state transitions - IMPROVED LOGIC
+    let detectedRotation = 0;
+    
+    // Clockwise: when moving towards screen
+    if (currentState === 'towards_screen' && state.lastState === 'normal') {
+      detectedRotation = 1; // Clockwise
+      state.clockwiseRotations++;
+      console.log(`🔄 CLOCKWISE: Moving towards screen (${state.clockwiseRotations} total)`);
+    }
+    // Anticlockwise: when returning to normal from towards_screen
+    else if (currentState === 'normal' && state.lastState === 'towards_screen' && state.clockwiseRotations > 0) {
+      detectedRotation = -1; // Anticlockwise
+      state.clockwiseRotations--;
+      console.log(`🔄 ANTICLOCKWISE: Returning to normal (${state.clockwiseRotations} remaining)`);
+    }
+    
+    // Additional: Clockwise when moving away from screen (for better coverage)
+    if (currentState === 'away_from_screen' && state.lastState === 'normal') {
+      detectedRotation = 1; // Clockwise
+      state.clockwiseRotations++;
+      console.log(`🔄 CLOCKWISE: Moving away from screen (${state.clockwiseRotations} total)`);
+    }
+    // Anticlockwise: when returning to normal from away_from_screen
+    else if (currentState === 'normal' && state.lastState === 'away_from_screen' && state.clockwiseRotations > 0) {
+      detectedRotation = -1; // Anticlockwise
+      state.clockwiseRotations--;
+      console.log(`🔄 ANTICLOCKWISE: Returning to normal from away (${state.clockwiseRotations} remaining)`);
+    }
+    
+    // Apply rotation with reduced cooldown for smoother control
+    if (detectedRotation !== 0 && (now - state.lastRotationTime) > 500) { // Reduced from 1000ms to 500ms
+      gesture.rotation = detectedRotation;
+      state.lastRotationTime = now;
+    } else {
+      gesture.rotation = 0;
+    }
+    
+    // 2. SIMPLE VERTICAL CONTROL (Up Arrow Toggle)
+    console.log(`Vertical movement: ${rightDeltaY.toFixed(1)}px (threshold: ${thresholds.verticalThreshold})`);
+    
+    if (Math.abs(rightDeltaY) > thresholds.verticalThreshold && 
+        (now - lastElbowToggleRef.current) > 1000) { // 1 second debounce
+      if (rightDeltaY < 0) { // Moving up
+      gesture.elbowToggle = true;
+      lastElbowToggleRef.current = now;
+        console.log('⬆️ ELBOW TOGGLE DETECTED');
+      }
+    }
+    
+    debugInfoRef.current.gesture = gesture;
     
     // Control robot if gesture detected
-    if (smoothedGesture.rotation !== robotState.rotation || 
-        smoothedGesture.shoulder !== robotState.shoulder || 
-        smoothedGesture.elbowToggle) {
-      controlRobot(smoothedGesture);
+    if (Object.keys(gesture).length > 0) {
+      controlRobot(gesture);
     }
     
     // Update last positions
-    lastHandPositionsRef.current = currentPositions;
+    lastHandPositionsRef.current.right = currentRightPos;
   };
 
   // Detect poses and hands
@@ -481,7 +516,7 @@ export default function TrainCardPage() {
   // Start camera on mount
   useEffect(() => {
     if (!isWalletLoading) {
-      startCamera();
+    startCamera();
     }
   }, [isWalletLoading]);
 
@@ -585,17 +620,34 @@ export default function TrainCardPage() {
             </div> */}
 
             {/* Debug Info */}
-            {/* <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-xs font-mono">
+            <div className="absolute top-4 right-4 bg-black/80 text-white p-3 rounded-lg text-xs font-mono">
               <div className="space-y-1">
-                <div>Left ΔX: {debugInfoRef.current.leftDeltaX || '0.0'}</div>
-                <div>Left ΔY: {debugInfoRef.current.leftDeltaY || '0.0'}</div>
-                <div>Right ΔX: {debugInfoRef.current.rightDeltaX || '0.0'}</div>
-                <div>Right ΔY: {debugInfoRef.current.rightDeltaY || '0.0'}</div>
+                <div className="text-blue-300 font-bold">3D Arm Orientation</div>
+                <div>Elbow-Wrist Distance: {debugInfoRef.current.elbowWristDistance || '0.0'}px</div>
+                <div>Normalized: {debugInfoRef.current.normalizedDistance || '0.00'}</div>
                 <div className="text-gray-300 mt-2">
-                  Raw Gesture: {JSON.stringify(debugInfoRef.current.gesture || {})}
+                  Right ΔY: {debugInfoRef.current.rightDeltaY || '0.0'}px (need &gt;50px)
+                </div>
+                <div className="text-gray-300 mt-2">
+                  Wrist: ({debugInfoRef.current.rawWrist?.x || '0'}, {debugInfoRef.current.rawWrist?.y || '0'})
+                </div>
+                <div className="text-gray-300 mt-2">
+                  Elbow: ({debugInfoRef.current.rawElbow?.x || '0'}, {debugInfoRef.current.rawElbow?.y || '0'})
+                </div>
+                <div className="text-gray-300 mt-2">
+                  Gesture: {JSON.stringify(debugInfoRef.current.gesture || {})}
+                </div>
+                <div className="text-yellow-300 mt-2 text-xs">
+                  State: {rotationStateRef.current.currentState} | Baseline: {rotationStateRef.current.baselineDistance?.toFixed(2) || 'N/A'}
+                </div>
+                <div className="text-green-300 mt-2 text-xs">
+                  Clockwise Count: {rotationStateRef.current.clockwiseRotations} | Cooldown: 500ms
+                </div>
+                <div className="text-blue-300 mt-2 text-xs">
+                  Towards: &lt;-0.08 | Normal: ±0.1 | Away: &gt;0.12
                 </div>
               </div>
-            </div> */}
+            </div>
 
 
             {/* Minimize/Close button - only show when expanded */}
