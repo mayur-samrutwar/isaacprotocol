@@ -39,3 +39,28 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# hardhat
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# smart contracts
+
+# deployment
+deployments/
+deploy-info.json
+
+# solidity
+*.sol.bak
+
+# gas reports
+gas-report.txt
+
+# coverage reports
+coverage.json
+coverage/
+
+# local blockchain
+.openzeppelin/

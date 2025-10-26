@@ -7,6 +7,7 @@ import * as tf from '@tensorflow/tfjs';
 import '@tensorflow/tfjs-backend-webgl';
 import * as poseDetection from '@tensorflow-models/pose-detection';
 
+
 export default function TrainCardPage() {
   const router = useRouter();
   const { id } = router.query;
@@ -14,6 +15,11 @@ export default function TrainCardPage() {
   const [isCardExpanded, setIsCardExpanded] = useState(true);
   const [isWalletLoading, setIsWalletLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Mockup success popup state
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [recordingScore, setRecordingScore] = useState(0);
+  const [transactionId, setTransactionId] = useState('');
   
   // Pose tracking refs
   const videoRef = useRef(null);
@@ -69,6 +75,30 @@ export default function TrainCardPage() {
   };
 
   const currentTask = taskData[id] || taskData.t1;
+
+  // Mockup function to show success popup
+  const showMockupSuccess = () => {
+    // Generate random score between 0.1-0.5
+    const score = Math.random() * 0.4 + 0.1; // 0.1 to 0.5
+    setRecordingScore(score);
+    
+    // Generate truncated transaction ID
+    const fullTxId = '0x' + Math.random().toString(16).substr(2, 8) + Math.random().toString(16).substr(2, 8) + Math.random().toString(16).substr(2, 8);
+    const truncatedTxId = fullTxId.substring(0, 8) + '...' + fullTxId.substring(fullTxId.length - 4);
+    setTransactionId(truncatedTxId);
+    
+    // Show success popup
+    setShowSuccessPopup(true);
+  };
+
+  // Auto-show success popup after 30 seconds
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      showMockupSuccess();
+    }, 30000); // 30 seconds
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // Initialize pose detection
   const initializePoseDetection = async () => {
@@ -569,6 +599,49 @@ export default function TrainCardPage() {
             scene="https://prod.spline.design/HbW5HOB3GbmgVFbh/scene.splinecode" 
           />
         </div>
+
+        {/* Mockup Success Popup */}
+        {showSuccessPopup && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[300]">
+            <div className="bg-white rounded-xl p-8 max-w-md mx-4 text-center">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Data Captured Successfully!</h2>
+              
+              <div className="space-y-4 mt-6">
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="text-sm text-gray-600 mb-1">Performance Score</div>
+                  <div className="text-3xl font-bold text-green-600">
+                    {recordingScore.toFixed(2)}
+                  </div>
+                </div>
+                
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="text-sm text-gray-600 mb-1">Reward Released</div>
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="text-sm font-mono text-gray-800">
+                      {transactionId}
+                    </div>
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => setShowSuccessPopup(false)}
+                className="mt-6 w-full px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Meeting Card - Single Card that Expands/Minimizes */}
         <div 
